@@ -39,17 +39,24 @@ C(S, t) = S \Phi(d_1) - K e^{-r(T-t)} \Phi(d_2)
 $$
 
 where:
-- \( S \) is the current price of the underlying asset.
-- \( K \) is the strike price of the option.
-- \( r \) is the risk-free interest rate.
-- \( T \) is the time to maturity.
-- \( \Phi(\cdot) \) is the cumulative distribution function of the standard normal distribution.
-- \( d_1 = \frac{\ln(S/K) + (r + 0.5\sigma^2)T}{\sigma \sqrt{T}} \)
-- \( d_2 = d_1 - \sigma \sqrt{T} \)
+- $S$ is the current price of the underlying asset.
+- $K$ is the strike price of the option.
+- $r$ is the risk-free interest rate.
+- $T$ is the time to maturity.
+- $\Phi(\cdot)$ is the cumulative distribution function of the standard normal distribution.
+- 
+$$
+d_1 = \frac{\ln(S/K) + (r + 0.5\sigma^2)T}{\sigma \sqrt{T}}
+$$
+
+- 
+$$
+d_2 = d_1 - \sigma \sqrt{T}
+$$
 
 ### Delta and Its Role in Hedging
 
-Delta (\( \Delta \)) represents the sensitivity of the option's price to small changes in the price of the underlying asset. Mathematically, it is the first derivative of the option price with respect to the underlying asset's price:
+Delta $\Delta$ represents the sensitivity of the option's price to small changes in the price of the underlying asset. Mathematically, it is the first derivative of the option price with respect to the underlying asset's price:
 
 $$
 \Delta = \frac{\partial C}{\partial S} = \Phi(d_1)
@@ -61,11 +68,11 @@ In delta hedging, the goal is to construct a portfolio that is delta-neutral, me
 
 Beyond delta, other Greeks play significant roles in the behavior of options and the effectiveness of hedging strategies:
 
-- **Gamma (\( \Gamma \))**: Measures the rate of change of delta with respect to the underlying asset's price. A long option position has positive gamma, implying that delta increases as the underlying price increases and vice versa. High gamma necessitates more frequent rebalancing to maintain a delta-neutral portfolio.
+- **Gamma $\Gamma$**: Measures the rate of change of delta with respect to the underlying asset's price. A long option position has positive gamma, implying that delta increases as the underlying price increases and vice versa. High gamma necessitates more frequent rebalancing to maintain a delta-neutral portfolio.
   
-- **Theta (\( \Theta \))**: Represents the sensitivity of the option's price to the passage of time, also known as time decay. For long options, theta is negative, meaning the option loses value as time progresses, all else being equal.
+- **Theta $\Theta$**: Represents the sensitivity of the option's price to the passage of time, also known as time decay. For long options, theta is negative, meaning the option loses value as time progresses, all else being equal.
 
-- **Vega (\( \nu \))**: Measures the sensitivity of the option's price to changes in volatility.
+- **Vega $\nu$**: Measures the sensitivity of the option's price to changes in volatility.
 
 Understanding these Greeks is crucial for managing the risks associated with options trading and implementing effective hedging strategies.
 
@@ -168,12 +175,6 @@ pip install numpy pandas scipy matplotlib seaborn yfinance arch tqdm
 - **Heatmaps:** Visual representations showing how different rebalancing and rolling frequencies affect the strategy's performance. Optimal parameters are those that maximize the final portfolio value while minimizing costs.
 
 - **Cumulative Fees and Delta Drift:** Provide insights into the costs incurred and the effectiveness of maintaining a delta-neutral portfolio over time.
-
----
-
-## Results
-
-*Note: Include sample results or summaries here if available.*
 
 ---
 
