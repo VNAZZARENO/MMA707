@@ -24,7 +24,7 @@
 
 ## Introduction
 
-Delta hedging is a fundamental strategy in options trading aimed at minimizing the directional risk associated with price movements of the underlying asset. This repository, **MMA707**, provides an implementation of a delta-hedging scheme using the Black-Scholes model, augmented with volatility estimates from both GARCH models and VIX proxies. The objective is to simulate the performance of the hedging strategy under various rebalancing and rolling frequencies, accounting for transaction costs and other practical considerations.
+Delta hedging is a key strategy in options trading to reduce the risk from price changes in the underlying asset. This repository, **MMA707**, implements a delta-hedging approach using the Black-Scholes model, enhanced with volatility estimates from GARCH models and VIX proxies. The goal is to simulate how the hedging strategy performs with different rebalancing and rolling frequencies, while considering transaction costs and other real-world factors.
 
 ---
 
@@ -32,7 +32,7 @@ Delta hedging is a fundamental strategy in options trading aimed at minimizing t
 
 ### Black-Scholes Model
 
-The Black-Scholes model is a mathematical framework for pricing European-style options. It assumes that the price of the underlying asset follows a geometric Brownian motion with constant volatility and interest rates. The Black-Scholes formula for a European call option is given by:
+The Black-Scholes model is a widely used method for pricing European-style options. It assumes that the underlying asset price follows a geometric Brownian motion with constant volatility and interest rates. The Black-Scholes formula for a European call option is:
 
 $$
 C(S, t) = S \Phi(d_1) - K e^{-r(T-t)} \Phi(d_2)
@@ -44,51 +44,50 @@ where:
 - $r$ is the risk-free interest rate.
 - $T$ is the time to maturity.
 - $\Phi(\cdot)$ is the cumulative distribution function of the standard normal distribution.
-- 
+  
 $$
 d_1 = \frac{\ln(S/K) + (r + 0.5\sigma^2)T}{\sigma \sqrt{T}}
 $$
 
-- 
 $$
 d_2 = d_1 - \sigma \sqrt{T}
 $$
 
 ### Delta and Its Role in Hedging
 
-Delta $\Delta$ represents the sensitivity of the option's price to small changes in the price of the underlying asset. Mathematically, it is the first derivative of the option price with respect to the underlying asset's price:
+Delta $\Delta$ measures how the option price changes with small movements in the underlying asset's price. It’s the first derivative of the option price with respect to the asset price:
 
 $$
 \Delta = \frac{\partial C}{\partial S} = \Phi(d_1)
 $$
 
-In delta hedging, the goal is to construct a portfolio that is delta-neutral, meaning that the portfolio's value is insensitive to small changes in the underlying asset's price. This is achieved by holding a position in the underlying asset that offsets the delta of the option position. For a long call option position, the delta is positive, so the hedging strategy involves shorting \( \Delta \) units of the underlying asset.
+In delta hedging, we aim to create a delta-neutral portfolio, meaning its value doesn't change with small price movements of the underlying asset. For a long call option, delta is positive, so we hedge by shorting $\Delta$ units of the underlying asset.
 
 ### Gamma, Theta, and Other Greeks
 
-Beyond delta, other Greeks play significant roles in the behavior of options and the effectiveness of hedging strategies:
+Other Greeks are also important in options trading and hedging:
 
-- **Gamma $\Gamma$**: Measures the rate of change of delta with respect to the underlying asset's price. A long option position has positive gamma, implying that delta increases as the underlying price increases and vice versa. High gamma necessitates more frequent rebalancing to maintain a delta-neutral portfolio.
+- **Gamma $\Gamma$**: Shows how delta changes with the underlying asset's price. A long option position has positive gamma, meaning delta increases as the asset price rises. High gamma requires more frequent rebalancing to stay delta-neutral.
   
-- **Theta $\Theta$**: Represents the sensitivity of the option's price to the passage of time, also known as time decay. For long options, theta is negative, meaning the option loses value as time progresses, all else being equal.
+- **Theta $\Theta$**: Represents time decay, or how the option's price decreases as time passes. For long options, theta is negative, indicating the option loses value over time.
 
-- **Vega $\nu$**: Measures the sensitivity of the option's price to changes in volatility.
+- **Vega $\nu$**: Measures sensitivity to volatility changes.
 
-Understanding these Greeks is crucial for managing the risks associated with options trading and implementing effective hedging strategies.
+Understanding these Greeks helps manage the risks and effectiveness of hedging strategies.
 
 ### Transaction Costs and Practical Considerations
 
-In an idealized, frictionless market, continuous delta hedging would perfectly replicate the option's payoff at expiration. However, in reality, several factors lead to deviations from this ideal:
+In theory, continuous delta hedging can perfectly replicate option payoffs. However, in reality, several issues arise:
 
-- **Transaction Costs**: Each rebalancing of the portfolio incurs costs such as bid-ask spreads, commissions, and slippage. Frequent rebalancing, especially in high-gamma scenarios, can accumulate significant costs over time.
+- **Transaction Costs**: Rebalancing the portfolio incurs costs like spreads, commissions, and slippage. Frequent rebalancing, especially with high gamma, can add up these costs quickly.
+  
+- **Discrete Rebalancing**: Continuous rebalancing isn't feasible. Rebalancing at set intervals (e.g., daily or weekly) can cause the portfolio's delta to drift between adjustments.
+  
+- **Volatility Estimation**: Accurately estimating volatility is tough. Errors in estimation lead to incorrect delta calculations, affecting the hedge.
+  
+- **Model Assumptions**: The Black-Scholes model assumes constant volatility and interest rates, which isn't always true in real markets.
 
-- **Discrete Rebalancing**: Continuous rebalancing is impossible in practice. Rebalancing at discrete intervals (e.g., daily, weekly) introduces additional risks and costs, as the portfolio's delta can drift between rebalancing times.
-
-- **Volatility Estimation**: Accurate estimation of volatility is challenging. Misestimation can lead to incorrect delta calculations, affecting the hedging effectiveness.
-
-- **Model Assumptions**: The Black-Scholes model assumes constant volatility and interest rates, which may not hold in dynamic market conditions.
-
-These factors contribute to the negative expected value of a delta-hedged long option position when implemented realistically, as seen in the simulation results.
+These factors often result in a delta-hedged long option position losing value over time, as shown in our simulations.
 
 ---
 
@@ -96,35 +95,35 @@ These factors contribute to the negative expected value of a delta-hedged long o
 
 ### Data Collection and Preprocessing
 
-The simulation relies on historical data for the underlying asset, risk-free rates, and volatility proxies (e.g., VIX). Data is fetched using the `yfinance` library and processed as follows:
+The simulation uses historical data for the underlying asset, risk-free rates, and volatility proxies like the VIX. Data is gathered using the yfinance library and processed as follows:
 
-- **Stock Data**: Historical closing prices are used to compute log returns.
+- **Stock Data**: Historical closing prices are used to calculate log returns.
   
-- **Risk-Free Rate**: Obtained from a relevant financial instrument (e.g., 5-Year Treasury Rate) and annualized.
+- **Risk-Free Rate**: Sourced from a relevant financial instrument (e.g., 5-Year Treasury Rate) and annualized.
   
-- **Volatility Proxy**: VIX or other implied volatility measures are used as proxies for the underlying asset's volatility.
+- **Volatility Proxy**: VIX or other implied volatility measures serve as proxies for the asset's volatility.
 
 ### Volatility Estimation
 
-Volatility is estimated using two approaches:
+We estimate volatility using two methods:
 
-1. **GARCH Model**: The Generalized Autoregressive Conditional Heteroskedasticity (GARCH) model captures time-varying volatility by modeling the conditional variance of returns. This provides a smoothed estimate of annualized volatility used in the hedging strategy.
-
-2. **VIX Proxy**: Implied volatility from market instruments like the VIX index serves as an alternative volatility estimate.
+1. **GARCH Model**: The Generalized Autoregressive Conditional Heteroskedasticity (GARCH) model captures changing volatility by modeling the conditional variance of returns. This provides a smooth estimate of annualized volatility for the hedging strategy.
+  
+2. **VIX Proxy**: Implied volatility from market indices like the VIX offers an alternative volatility estimate.
 
 ### Delta Hedging Strategy
 
-The core components of the delta hedging simulation include:
+Key parts of the delta hedging simulation include:
 
-- **Initial Positioning**: Establishing a portfolio by purchasing a call option and delta-hedging by shorting the underlying asset based on the option's delta.
-
-- **Simulation of Trades**: Iteratively rebalancing the portfolio at specified intervals (`day_rebalancing`) and rolling the option position (`day_rolling`) to maintain the hedge. This process accounts for transaction costs and time decay.
-
-- **Parameter Sweep**: Testing various combinations of rebalancing (`day_stock`) and rolling (`day_option`) frequencies to assess their impact on the portfolio's final value.
+- **Initial Positioning**: Start by buying a call option and hedging by shorting the underlying asset based on the option's delta.
+  
+- **Simulation of Trades**: Rebalance the portfolio at set intervals (day_rebalancing) and roll the option position (day_rolling) to maintain the hedge. This process accounts for transaction costs and time decay.
+  
+- **Parameter Sweep**: Test different combinations of rebalancing (day_stock) and rolling (day_option) frequencies to see how they affect the portfolio's final value.
 
 ### Parameter Sweep and Analysis
 
-To evaluate the strategy's robustness, the simulation iterates over different values of `day_stock` (rebalancing frequency) and `day_option` (rolling frequency). For each combination, the final portfolio value is recorded, and the results are visualized using heatmaps to identify optimal rebalancing and rolling schedules.
+To check the strategy's robustness, the simulation runs through various values of day_stock (rebalancing frequency) and day_option (rolling frequency). For each pair, the final portfolio value is recorded and visualized with heatmaps to find the best rebalancing and rolling schedules.
 
 ---
 
@@ -132,18 +131,18 @@ To evaluate the strategy's robustness, the simulation iterates over different va
 
 ### Prerequisites
 
-Ensure you have the following Python libraries installed:
+Make sure you have these Python libraries installed:
 
-- `numpy`
-- `pandas`
-- `scipy`
-- `matplotlib`
-- `seaborn`
-- `yfinance`
-- `arch`
-- `tqdm`
+- numpy
+- pandas
+- scipy
+- matplotlib
+- seaborn
+- yfinance
+- arch
+- tqdm
 
-You can install them using `pip`:
+Install them with pip:
 
 ```bash
 pip install numpy pandas scipy matplotlib seaborn yfinance arch tqdm
@@ -153,34 +152,36 @@ pip install numpy pandas scipy matplotlib seaborn yfinance arch tqdm
 
 1. **Clone the Repository:**
 
-   ```bash
-   git clone https://github.com/VNAZZARENO/MMA707.git
-   cd MMA707
-   ```
+    ```bash
+    git clone https://github.com/VNAZZARENO/MMA707.git
+    cd MMA707
+    ```
 
 2. **Configure Parameters:**
 
-   Adjust the parameters in the main script as needed, such as the underlying symbol, risk-free rate proxy, volatility proxy, and historical data period.
+   Adjust settings in the main script, such as the underlying symbol, risk-free rate proxy, volatility proxy, and the historical data period.
 
-3. **Open the Notebook and tinker with it:**
+3. **Open the Notebook and Modify as Needed:**
+
+   Tinker with the notebook to customize the simulation.
 
 4. **View Results:**
 
-   The simulation will generate CSV files containing the portfolio data and produce heatmaps illustrating the final portfolio values across different parameter combinations.
+   The simulation will create CSV files with portfolio data and generate heatmaps showing final portfolio values for different parameter combinations.
 
 ### Interpreting the Results
 
-- **Final Portfolio Value:** Indicates the profitability of the delta hedging strategy after accounting for transaction costs and other factors.
-
-- **Heatmaps:** Visual representations showing how different rebalancing and rolling frequencies affect the strategy's performance. Optimal parameters are those that maximize the final portfolio value while minimizing costs.
-
-- **Cumulative Fees and Delta Drift:** Provide insights into the costs incurred and the effectiveness of maintaining a delta-neutral portfolio over time.
+- **Final Portfolio Value:** Shows how profitable the delta hedging strategy is after considering transaction costs and other factors.
+  
+- **Heatmaps:** Visualize how different rebalancing and rolling frequencies impact the strategy's performance. Look for parameters that maximize the final portfolio value while keeping costs low.
+  
+- **Cumulative Fees and Delta Drift:** Offer insights into the costs incurred and how well the portfolio maintains delta neutrality over time.
 
 ---
 
 ## Conclusion
 
-The delta hedging strategy implemented in this repository demonstrates the practical challenges of replicating option payoffs in real-world markets. While the theoretical foundation provided by the Black-Scholes model suggests that continuous hedging can perfectly replicate option payoffs, practical considerations such as transaction costs, discrete rebalancing, and volatility estimation errors lead to a gradual loss of portfolio value over time. The parameter sweep analysis highlights the trade-offs between hedging frequency and transaction costs, underscoring the importance of optimizing rebalancing schedules to mitigate losses.
+The delta hedging strategy in this repository highlights the real-world challenges of replicating option payoffs. While the Black-Scholes model suggests that continuous hedging can perfectly match option payoffs, practical issues like transaction costs, discrete rebalancing, and volatility estimation errors lead to a gradual loss in portfolio value. Our parameter sweep analysis shows the balance between hedging frequency and transaction costs, emphasizing the need to optimize rebalancing schedules to reduce losses.
 
 ---
 
