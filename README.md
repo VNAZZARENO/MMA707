@@ -34,9 +34,9 @@ Delta hedging is a fundamental strategy in options trading aimed at minimizing t
 
 The Black-Scholes model is a mathematical framework for pricing European-style options. It assumes that the price of the underlying asset follows a geometric Brownian motion with constant volatility and interest rates. The Black-Scholes formula for a European call option is given by:
 
-\[
+$$
 C(S, t) = S \Phi(d_1) - K e^{-r(T-t)} \Phi(d_2)
-\]
+$$
 
 where:
 - \( S \) is the current price of the underlying asset.
@@ -51,9 +51,9 @@ where:
 
 Delta (\( \Delta \)) represents the sensitivity of the option's price to small changes in the price of the underlying asset. Mathematically, it is the first derivative of the option price with respect to the underlying asset's price:
 
-\[
+$$
 \Delta = \frac{\partial C}{\partial S} = \Phi(d_1)
-\]
+$$
 
 In delta hedging, the goal is to construct a portfolio that is delta-neutral, meaning that the portfolio's value is insensitive to small changes in the underlying asset's price. This is achieved by holding a position in the underlying asset that offsets the delta of the option position. For a long call option position, the delta is positive, so the hedging strategy involves shorting \( \Delta \) units of the underlying asset.
 
@@ -147,7 +147,7 @@ pip install numpy pandas scipy matplotlib seaborn yfinance arch tqdm
 1. **Clone the Repository:**
 
    ```bash
-   git clone https://github.com/yourusername/MMA707.git
+   git clone https://github.com/VNAZZARENO/MMA707.git
    cd MMA707
    ```
 
@@ -155,13 +155,7 @@ pip install numpy pandas scipy matplotlib seaborn yfinance arch tqdm
 
    Adjust the parameters in the main script as needed, such as the underlying symbol, risk-free rate proxy, volatility proxy, and historical data period.
 
-3. **Execute the Script:**
-
-   Run the main script to perform the delta hedging simulation and parameter sweep.
-
-   ```bash
-   python delta_hedging_simulation.py
-   ```
+3. **Open the Notebook and tinker with it:**
 
 4. **View Results:**
 
