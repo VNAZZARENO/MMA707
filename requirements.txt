@@ -1,6 +1,7 @@
 pandas
 numpy
 scipy
+swig
 plotly
 yfinance
 arch
