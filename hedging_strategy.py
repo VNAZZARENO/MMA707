@@ -271,6 +271,7 @@ if run_button:
         st.error("No data found for the given ticker and date range.")
     else:
         stock_data['log_returns'] = np.log(stock_data['Close']/stock_data['Close'].shift(1))
+        st.write(stock_data.columns)
         stock_data.dropna(subset=['log_returns'], inplace=True)
         risk_free_data = yf.download("^FVX", start=start_date, end=end_date)[['Close']]/100
         risk_free_data.columns=["Rate"]
