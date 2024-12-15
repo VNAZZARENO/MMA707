@@ -2,7 +2,7 @@ streamlit
 pandas
 numpy
 scipy
-yfinace
+yfinance
 arch
 tick
 plotly
