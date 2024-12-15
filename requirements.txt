@@ -6,5 +6,3 @@ yfinance
 arch
 matplotlib
 seaborn
-tick
-hawkes
