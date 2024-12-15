@@ -1,8 +1,8 @@
-streamlit
 pandas
 numpy
 scipy
+plotly
 yfinance
 arch
 tick
-plotly
+hawkes
