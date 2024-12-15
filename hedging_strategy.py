@@ -2,107 +2,14 @@ import streamlit as st
 import datetime
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+
 from scipy.stats import norm
 from arch import arch_model
 import yfinance as yf
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import seaborn as sns
-
-from tick.hawkes import SimuHawkes, HawkesKernelExp
 
 st.set_page_config(layout="wide")
-
-###################################
-# Functions for Synthetic Data
-###################################
-def generate_gbm_prices(start_price, mu, sigma, days):
-    dt = 1/252  
-    random_returns = np.random.normal(loc=(mu - 0.5 * sigma**2) * dt,
-                                      scale=sigma * np.sqrt(dt),
-                                      size=days)
-    price_series = start_price * np.exp(np.cumsum(random_returns))
-    return pd.Series(price_series)
-
-def generate_risk_free_rates(rate, days):
-    daily_rate = rate / 252
-    return pd.Series([daily_rate] * days)
-
-def generate_hawkes_volatility(days, dt=1/252, mu=0.8, alpha=0.6, beta=0.7, jump_size=0.04, seed=123):
-    kernel = HawkesKernelExp(decay=beta, intensity=alpha)
-    kernels = np.array([[kernel]])
-    baseline = [mu]
-
-    hawkes = SimuHawkes(kernels=kernels, baseline=baseline, end_time=days, seed=seed, verbose=False)
-    hawkes.simulate()
-    event_times = hawkes.timestamps[0]
-
-    end_date = datetime.date.today()
-    start_date = end_date - datetime.timedelta(days=int(days * 1.5))
-    dates = pd.bdate_range(start=start_date, periods=days, freq='C')
-    volatility = np.zeros(len(dates))
-    decay_factor = np.exp(-beta * dt)
-
-    event_days = np.floor(event_times).astype(int)
-    for day in event_days:
-        if day < len(volatility):
-            decay = decay_factor ** np.arange(len(volatility) - day)
-            volatility[day:] += jump_size * decay[:len(volatility) - day]
-
-    volatility += 0.2  
-    volatility_series = pd.Series(volatility, index=dates)
-    return volatility_series
-
-def get_synthetic_data_hawkes(time_period=1, 
-                              start_price=100,
-                              mu=0.08,
-                              sigma=0.25,
-                              rf_rate=0.02,
-                              hawkes_mu=0.8,
-                              hawkes_alpha=0.6,
-                              hawkes_beta=0.7,
-                              hawkes_jump=0.04,
-                              seed=42):
-
-    total_days = int(time_period * 252)
-    end_date = datetime.date.today()
-    start_date = end_date - datetime.timedelta(days=int(total_days * 1.5))
-    dates = pd.bdate_range(start=start_date, periods=total_days, freq='C')
-
-    stock_prices = generate_gbm_prices(start_price, mu, sigma, total_days)
-    stock_prices.index = dates
-    log_returns = np.log(stock_prices / stock_prices.shift(1))
-    stock_data = pd.DataFrame({
-        'Close': stock_prices,
-        'log_returns': log_returns
-    })
-    stock_data.dropna(subset=['log_returns'], inplace=True)
-
-    risk_free_data = generate_risk_free_rates(rf_rate, len(stock_data)) * 100
-    risk_free_df = pd.DataFrame({'Rate': risk_free_data.values}, index=stock_data.index)
-
-    volatility_proxy_data = generate_hawkes_volatility(
-        days=len(stock_data),
-        mu=hawkes_mu,
-        alpha=hawkes_alpha,
-        beta=hawkes_beta,
-        jump_size=hawkes_jump,
-        seed=seed
-    )
-    volatility_proxy_data.name = 'Vol_Proxy'
-    stock_data['implied_volatility'] = volatility_proxy_data.values
-    data = stock_data.copy()
-    data = pd.merge(data, risk_free_df, how='left', left_index=True, right_index=True)
-    data.ffill(inplace=True)
-
-    garch_model = arch_model(data['log_returns'] * 100, vol='Garch', p=1, q=1, mean='Zero', dist='normal')
-    garch_fit = garch_model.fit(disp="off")
-    data['volatility'] = garch_fit.conditional_volatility
-    data['annualized_volatility'] = data['volatility'] * np.sqrt(252) / 100
-    data['smoothed_annualized_volatility'] = data['annualized_volatility'].rolling(window=3, min_periods=1).mean()
-    data.dropna(subset=['smoothed_annualized_volatility'], inplace=True)
-    return data
 
 ###################################
 # Black-Scholes and Hedging Functions
@@ -344,7 +251,6 @@ page = st.sidebar.selectbox("Page", ["Simulation", "Volatility Visualization", "
 
 st.sidebar.header("Parameters")
 
-data_source = st.sidebar.selectbox("Data Source", ["Real Market Data", "Synthetic (Hawkes)"])
 stock_ticker = st.sidebar.text_input("Stock Ticker (For Real Data)", value="SPY")
 year_history = st.sidebar.slider("History (years)", 0.5, 20.0, 1.0, 0.5)
 
@@ -360,43 +266,26 @@ K_multiplier = st.sidebar.slider("Strike Multiplier", 0.8, 1.2, 1.1, 0.05)
 run_button = st.sidebar.button("Run Simulation")
 
 if run_button:
-    if data_source == "Real Market Data":
-        stock_data = yf.download(stock_ticker, start=start_date, end=end_date)
-        if len(stock_data) == 0:
-            st.error("No data found for the given ticker and date range.")
-        else:
-            stock_data['log_returns'] = np.log(stock_data['Close']/stock_data['Close'].shift(1))
-            stock_data.dropna(subset=['log_returns'], inplace=True)
-            risk_free_data = yf.download("^FVX", start=start_date, end=end_date)[['Close']]/100
-            risk_free_data.columns=["Rate"]
-            vix_data=yf.download("^VIX", start=start_date, end=end_date)[['Close']]
-            vix_data.columns=['VIX']
-            vix_data['implied_volatility']=vix_data['VIX']/100.0
-            data=pd.merge(stock_data,risk_free_data,how='left',on='Date')
-            data=pd.merge(data,vix_data[['implied_volatility']],how='left',on='Date')
-            data.ffill(inplace=True)
-            garch_model=arch_model(data['log_returns']*100, vol='Garch', p=1,q=1,mean='Zero', dist='normal')
-            garch_fit=garch_model.fit(disp="off")
-            data['volatility']=garch_fit.conditional_volatility
-            data['annualized_volatility']=data['volatility']*np.sqrt(252)/100
-            data['smoothed_annualized_volatility']=data['annualized_volatility'].rolling(window=3,min_periods=1).mean()
-            data.dropna(subset=['smoothed_annualized_volatility'], inplace=True)
+    stock_data = yf.download(stock_ticker, start=start_date, end=end_date)
+    if len(stock_data) == 0:
+        st.error("No data found for the given ticker and date range.")
     else:
-        # Synthetic Data
-        # start_price from the first close of real data if available or 100 as default
-        start_price = 100
-        data = get_synthetic_data_hawkes(
-            time_period=year_history,
-            start_price=start_price,
-            mu=0.08,
-            sigma=0.25,
-            rf_rate=0.02,
-            hawkes_mu=0.8,
-            hawkes_alpha=0.6,
-            hawkes_beta=0.7,
-            hawkes_jump=0.04,
-            seed=42
-        )
+        stock_data['log_returns'] = np.log(stock_data['Close']/stock_data['Close'].shift(1))
+        stock_data.dropna(subset=['log_returns'], inplace=True)
+        risk_free_data = yf.download("^FVX", start=start_date, end=end_date)[['Close']]/100
+        risk_free_data.columns=["Rate"]
+        vix_data=yf.download("^VIX", start=start_date, end=end_date)[['Close']]
+        vix_data.columns=['VIX']
+        vix_data['implied_volatility']=vix_data['VIX']/100.0
+        data=pd.merge(stock_data,risk_free_data,how='left',on='Date')
+        data=pd.merge(data,vix_data[['implied_volatility']],how='left',on='Date')
+        data.ffill(inplace=True)
+        garch_model=arch_model(data['log_returns']*100, vol='Garch', p=1,q=1,mean='Zero', dist='normal')
+        garch_fit=garch_model.fit(disp="off")
+        data['volatility']=garch_fit.conditional_volatility
+        data['annualized_volatility']=data['volatility']*np.sqrt(252)/100
+        data['smoothed_annualized_volatility']=data['annualized_volatility'].rolling(window=3,min_periods=1).mean()
+        data.dropna(subset=['smoothed_annualized_volatility'], inplace=True)
 
     if len(data) > 0:
         initial_positions=build_initial_positions(data=data,fees=fees,use_vix_proxy=use_vix_proxy,option_maturity=option_maturity,K_multiplier=K_multiplier)
@@ -411,12 +300,9 @@ if page == "Simulation":
         st.subheader("Simulation Results")
         portfolio_data = st.session_state['portfolio_data']
         
-        # Show dataframe
         numeric_cols = portfolio_data.select_dtypes(include=[float, int]).columns
         st.dataframe(portfolio_data.style.format({col: "{:.4f}" for col in numeric_cols}))
 
-        # First Figure: Portfolio Value and Volatility
-        # We'll use Plotly and add a secondary y-axis for volatility
         fig_val = go.Figure()
         fig_val.add_trace(
             go.Scatter(
@@ -428,8 +314,6 @@ if page == "Simulation":
             )
         )
 
-        # Add volatility on a secondary axis, dashed line, alpha=0.3 equivalent is opacity=0.3
-        # Make sure 'Volatility' is in portfolio_data. If not, use annualized vol or another vol measure.
         if 'Volatility' in portfolio_data.columns:
             fig_val.add_trace(
                 go.Scatter(
@@ -457,8 +341,6 @@ if page == "Simulation":
 
         st.plotly_chart(fig_val, use_container_width=True)
 
-        # Second Figure: Option Price and Delta
-        # We'll plot Option_Price on the left axis and Option_Delta on the right axis
         if 'Option_Price' in portfolio_data.columns and 'Option_Delta' in portfolio_data.columns:
             fig_opt = go.Figure()
             fig_opt.add_trace(
@@ -471,7 +353,6 @@ if page == "Simulation":
                 )
             )
 
-            # Add Delta on secondary axis
             fig_opt.add_trace(
                 go.Scatter(
                     x=portfolio_data['Date'],
