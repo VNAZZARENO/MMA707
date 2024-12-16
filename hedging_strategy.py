@@ -2,18 +2,136 @@ import streamlit as st
 import datetime
 import numpy as np
 import pandas as pd
-
 from scipy.stats import norm
 from arch import arch_model
 import yfinance as yf
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+
+
+
 st.set_page_config(layout="wide")
 
-###################################
-# Black-Scholes and Hedging Functions
-###################################
+
+####################################
+# Fetching Data Function
+####################################
+
+@st.cache_data(show_spinner=True, ttl=86400)  # Cache expires after 1 day (86400 seconds)
+def get_data(symbol, risk_free, volatility_proxy, time_period):
+    end_date = datetime.date.today()
+    start_date = end_date - datetime.timedelta(days=int(time_period * 252))
+    stock_data = yf.download(symbol, start=start_date, end=end_date)
+
+    # Remove the symbol prefix because we only retrieve one stock
+    if isinstance(stock_data.columns, pd.MultiIndex):  # Check for MultiIndex
+        stock_data.columns = stock_data.columns.droplevel(1)
+    if stock_data.empty:
+        st.error(f"No data found for symbol: {symbol}")
+        return pd.DataFrame()
+
+    stock_data['log_returns'] = np.log(stock_data['Close'] / stock_data['Close'].shift(1))
+    stock_data.dropna(subset=['log_returns'], inplace=True)
+
+    # Fetch risk-free rate data
+    risk_free_data = yf.download(risk_free, start=start_date, end=end_date)
+    if risk_free_data.empty:
+        st.error(f"No data found for risk-free symbol: {risk_free}")
+        return pd.DataFrame()
+    risk_free_data = risk_free_data[['Close']] / 100
+    risk_free_data.columns = ["Rate"]
+
+    # Initialize volatility proxy
+    if volatility_proxy == "VIX":
+        vol_proxy_symbol = "^VIX"
+        volatility_data = yf.download(vol_proxy_symbol, start=start_date, end=end_date)
+        if isinstance(volatility_data.columns, pd.MultiIndex):  # Check for MultiIndex
+            volatility_data.columns = volatility_data.columns.droplevel(1)
+        if volatility_data.empty:
+            st.error(f"No data found for volatility proxy symbol: {vol_proxy_symbol}")
+            return pd.DataFrame()
+        volatility_data = volatility_data[['Close']].rename(columns={'Close': 'implied_volatility'})
+        volatility_data['implied_volatility'] = volatility_data['implied_volatility'] / 100.0
+
+    elif volatility_proxy == "VXN":
+        vol_proxy_symbol = "^VXN"
+        volatility_data = yf.download(vol_proxy_symbol, start=start_date, end=end_date)
+        if isinstance(volatility_data.columns, pd.MultiIndex):  # Check for MultiIndex
+            volatility_data.columns = volatility_data.columns.droplevel(1)
+        if volatility_data.empty:
+            st.error(f"No data found for volatility proxy symbol: {vol_proxy_symbol}")
+            return pd.DataFrame()
+        volatility_data = volatility_data[['Close']].rename(columns={'Close': 'implied_volatility'})
+        volatility_data['implied_volatility'] = volatility_data['implied_volatility'] / 100.0
+
+    elif volatility_proxy == "Realized Volatility":
+        # Calculate realized volatility
+        volatility_data = pd.DataFrame()
+        volatility_data['realized_volatility'] = stock_data['log_returns'].rolling(window=21).std() * np.sqrt(252)
+
+    elif volatility_proxy == "EWMA":
+        lambda_ = 0.94
+        volatility_data = pd.DataFrame()
+        volatility_data['ewma_volatility'] = stock_data['log_returns'].ewm(alpha=1 - lambda_).std() * np.sqrt(252)
+
+    elif volatility_proxy == "ATR":
+        # Calculate ATR-based volatility
+        volatility_data = pd.DataFrame()
+        volatility_data['ATR'] = stock_data[['High', 'Low', 'Close']].apply(
+            lambda x: max(x['High'] - x['Low'], abs(x['High'] - x['Close']), abs(x['Low'] - x['Close'])),
+            axis=1
+        )
+        volatility_data['atr_volatility'] = volatility_data['ATR'].rolling(window=14).mean() * np.sqrt(252) / stock_data['Close']
+
+    elif volatility_proxy == "GARCH":
+        # Estimate volatility using GARCH
+        garch_model = arch_model(stock_data['log_returns'] * 100, vol='Garch', p=1, q=1, mean='Zero', dist='normal')
+        garch_fit = garch_model.fit(disp="off")
+        stock_data['volatility'] = garch_fit.conditional_volatility
+        stock_data['annualized_volatility'] = stock_data['volatility'] * np.sqrt(252) / 100
+        stock_data['smoothed_annualized_volatility'] = stock_data['annualized_volatility'].rolling(window=3, min_periods=1).mean()
+        volatility_data = stock_data[['smoothed_annualized_volatility']].rename(columns={'smoothed_annualized_volatility': 'implied_volatility'})
+
+    else:
+        # No volatility proxy provided
+        volatility_data = pd.DataFrame()
+
+    # Merge data
+    if not volatility_data.empty:
+        data = stock_data.join(risk_free_data, how='left').join(volatility_data, how='left')
+    else:
+        data = stock_data.join(risk_free_data, how='left')
+
+    data.ffill(inplace=True)
+
+    # If using GARCH separately
+    if volatility_proxy != "GARCH":
+        # Estimate GARCH volatility regardless of the proxy
+        garch_model = arch_model(data['log_returns'] * 100, vol='Garch', p=1, q=1, mean='Zero', dist='normal')
+        garch_fit = garch_model.fit(disp="off")
+        data['volatility'] = garch_fit.conditional_volatility
+        data['annualized_volatility'] = data['volatility'] * np.sqrt(252) / 100
+        data['smoothed_annualized_volatility'] = data['annualized_volatility'].rolling(window=3, min_periods=1).mean()
+
+    data.dropna(subset=['log_returns'], inplace=True)
+
+    return data
+
+
+
+def calculate_beta(stock_returns, benchmark_returns):
+    covariance = np.cov(stock_returns, benchmark_returns)[0][1]
+    variance = np.var(benchmark_returns)
+    beta = covariance / variance
+    return beta
+
+
+
+
+####################################
+#Black-Scholes and Hedging Functions
+####################################
 def compute_d1_d2(S, K, r, sigma, T):
     d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     d2 = d1 - sigma * np.sqrt(T)
@@ -32,14 +150,23 @@ def black_scholes(S, K, T, r=0.02, sigma=0.2, option_type='call'):
 ###################################
 # Portfolio Initialization
 ###################################
-def build_initial_positions(data, fees=1/100, K_multiplier=1.1, use_vix_proxy=False, use_constant_rate=False, risk_free=0.02, option_maturity=6/12):
+
+@st.cache_data(show_spinner=True)
+def build_initial_positions(data, fees=1/100, K_multiplier=1.1, use_vix_proxy=False, use_constant_rate=False, risk_free=0.02, use_realized_vol=False, use_ewma=False, use_atr=False, option_maturity=6/12):
     N_call = 1
     S0 = data['Close'].iloc[0]
     K0 = int(round(K_multiplier * S0, -1))
     if use_vix_proxy:
         g0 = data['implied_volatility'].iloc[0]
+    elif use_realized_vol:
+        g0 = data['realized_volatility'].iloc[0]
+    elif use_ewma:
+        g0 = data['ewma_volatility'].iloc[0]
+    elif use_atr:
+        g0 = data['atr_volatility'].iloc[0]
     else:
-        g0 = data['annualized_volatility'].iloc[0]
+        g0 = data['smoothed_annualized_volatility'].iloc[0]
+
 
     if use_constant_rate:
         r0 = risk_free
@@ -74,12 +201,27 @@ def build_initial_positions(data, fees=1/100, K_multiplier=1.1, use_vix_proxy=Fa
 ###################################
 # Simulation of Trades
 ###################################
-def simulate_trades(data, initial_positions, fees=1/100, day_rebalancing=1, day_rolling=21, K_multiplier=1.1, use_vix_proxy=False, use_constant_rate=False, risk_free=0.02, option_maturity=6/12):
+
+
+    # Similar adjustments as in build_initial_positions to select the correct volatility measure
+    # Example:
+    
+
+    # Continue with existing simulation logic...
+
+
+@st.cache_data(show_spinner=True)
+def simulate_trades(data, initial_positions, fees=1/100, day_rebalancing=1, day_rolling=21, 
+                   use_vix_proxy=False, use_constant_rate=False, use_realized_vol=False, use_ewma=False, use_atr=False, 
+                   risk_free=0.02, option_maturity=6/12, K_multiplier=1.1):
+                   
     portfolio = {}
     position = initial_positions.copy()
     cumulative_drift = 0  
     portfolio[data.index[0]] = position
     N_call = 1 
+
+
 
     for i in range(day_rebalancing, len(data), day_rebalancing):
         prev_position = portfolio[data.index[i - day_rebalancing]].copy()
@@ -87,6 +229,12 @@ def simulate_trades(data, initial_positions, fees=1/100, day_rebalancing=1, day_
         K = prev_position['K']
         if use_vix_proxy:
             g = data['implied_volatility'].iloc[i]
+        elif use_realized_vol:
+            g = data['realized_volatility'].iloc[i]
+        elif use_ewma:
+            g = data['ewma_volatility'].iloc[i]
+        elif use_atr:
+            g = data['atr_volatility'].iloc[i]
         else:
             g = data['smoothed_annualized_volatility'].iloc[i]
 
@@ -252,58 +400,71 @@ page = st.sidebar.selectbox("Page", ["Simulation", "Volatility Visualization", "
 st.sidebar.header("Parameters")
 
 stock_ticker = st.sidebar.text_input("Stock Ticker (For Real Data)", value="SPY")
-year_history = st.sidebar.slider("History (years)", 0.5, 20.0, 1.0, 0.5)
+year_history = st.sidebar.slider("History (years)", 0.5, 30.0, 1.0, 0.5)
 
-start_date = datetime.date.today() - datetime.timedelta(days=int(year_history*365)) 
-end_date = datetime.date.today()
+# start_date = datetime.date.today() - datetime.timedelta(days=int(year_history*252)) 
+# end_date = datetime.date.today()
 
 day_rebalancing = st.sidebar.number_input("Rebalancing Frequency (days)",1,252,1)
 day_rolling = st.sidebar.number_input("Rolling Frequency (days)",-1,1000,21)
 fees = st.sidebar.slider("Transaction Fees (in %)", 0.0, 5.0, 1.0)/100.0
 option_maturity = st.sidebar.slider("Option Maturity (years)", 0.1, 2.0, 0.5, 0.1)
-use_vix_proxy = st.sidebar.selectbox("Volatility Source", ["GARCH","VIX"]) == "VIX"
-K_multiplier = st.sidebar.slider("Strike Multiplier", 0.8, 1.2, 1.1, 0.05)
+volatility_proxy = st.sidebar.selectbox("Volatility Source", ["GARCH", "VIX", "VXN", "Realized Volatility", "EWMA", "ATR"])
+K_multiplier = st.sidebar.slider("Strike Multiplier", 0.5, 1.5, 1.1, 0.05)
 run_button = st.sidebar.button("Run Simulation")
 
 if run_button:
-    stock_data = yf.download(stock_ticker, start=start_date, end=end_date)
-    if len(stock_data) == 0:
-        st.error("No data found for the given ticker and date range.")
-    else:
-        stock_data['log_returns'] = np.log(stock_data['Close']/stock_data['Close'].shift(1))
-        st.write(stock_data.columns)
-        stock_data.dropna(subset=['log_returns'], inplace=True)
-        risk_free_data = yf.download("^FVX", start=start_date, end=end_date)[['Close']]/100
-        risk_free_data.columns=["Rate"]
-        vix_data=yf.download("^VIX", start=start_date, end=end_date)[['Close']]
-        vix_data.columns=['VIX']
-        vix_data['implied_volatility']=vix_data['VIX']/100.0
-        data=pd.merge(stock_data,risk_free_data,how='left',on='Date')
-        data=pd.merge(data,vix_data[['implied_volatility']],how='left',on='Date')
-        data.ffill(inplace=True)
-        garch_model=arch_model(data['log_returns']*100, vol='Garch', p=1,q=1,mean='Zero', dist='normal')
-        garch_fit=garch_model.fit(disp="off")
-        data['volatility']=garch_fit.conditional_volatility
-        data['annualized_volatility']=data['volatility']*np.sqrt(252)/100
-        data['smoothed_annualized_volatility']=data['annualized_volatility'].rolling(window=3,min_periods=1).mean()
-        data.dropna(subset=['smoothed_annualized_volatility'], inplace=True)
+    st.write(volatility_proxy)
+    data = get_data(stock_ticker, "^FVX", volatility_proxy, year_history)
+    if not data.empty:
+        # Determine if VIX or other proxies are used
+        use_vix_proxy = (volatility_proxy == "VIX") or (volatility_proxy == "VXN")
+        use_realized_vol = (volatility_proxy == "Realized Volatility")
+        use_ewma = (volatility_proxy == "EWMA")
+        use_atr = (volatility_proxy == "ATR")
 
-    if len(data) > 0:
-        initial_positions=build_initial_positions(data=data,fees=fees,use_vix_proxy=use_vix_proxy,option_maturity=option_maturity,K_multiplier=K_multiplier)
-        portfolio_data=simulate_trades(data, initial_positions, fees=fees, day_rebalancing=day_rebalancing, day_rolling=day_rolling, use_vix_proxy=use_vix_proxy, option_maturity=option_maturity, K_multiplier=K_multiplier)
-        st.session_state['data']=data
-        st.session_state['portfolio_data']=portfolio_data
+        initial_positions = build_initial_positions(
+            data=data,
+            fees=fees,
+            use_vix_proxy=use_vix_proxy,
+            use_realized_vol=use_realized_vol,
+            use_ewma=use_ewma,
+            use_atr=use_atr,
+            option_maturity=option_maturity,
+            K_multiplier=K_multiplier
+        )
+
+        portfolio_data = simulate_trades(
+            data,
+            initial_positions,
+            fees=fees,
+            day_rebalancing=day_rebalancing,
+            day_rolling=day_rolling,
+            use_vix_proxy=use_vix_proxy,
+            use_realized_vol=use_realized_vol,
+            use_ewma=use_ewma,
+            use_atr=use_atr,
+            option_maturity=option_maturity,
+            K_multiplier=K_multiplier
+        )
+
+        st.session_state['data'] = data
+        st.session_state['portfolio_data'] = portfolio_data
     else:
         st.write("Please select valid parameters and run again.")
+
 
 if page == "Simulation":
     if 'portfolio_data' in st.session_state:
         st.subheader("Simulation Results")
         portfolio_data = st.session_state['portfolio_data']
         
+        # Show dataframe
         numeric_cols = portfolio_data.select_dtypes(include=[float, int]).columns
         st.dataframe(portfolio_data.style.format({col: "{:.4f}" for col in numeric_cols}))
 
+        # First Figure: Portfolio Value and Volatility
+        # We'll use Plotly and add a secondary y-axis for volatility
         fig_val = go.Figure()
         fig_val.add_trace(
             go.Scatter(
@@ -315,6 +476,8 @@ if page == "Simulation":
             )
         )
 
+        # Add volatility on a secondary axis, dashed line, alpha=0.3 equivalent is opacity=0.3
+        # Make sure 'Volatility' is in portfolio_data. If not, use annualized vol or another vol measure.
         if 'Volatility' in portfolio_data.columns:
             fig_val.add_trace(
                 go.Scatter(
@@ -342,6 +505,8 @@ if page == "Simulation":
 
         st.plotly_chart(fig_val, use_container_width=True)
 
+        # Second Figure: Option Price and Delta
+        # We'll plot Option_Price on the left axis and Option_Delta on the right axis
         if 'Option_Price' in portfolio_data.columns and 'Option_Delta' in portfolio_data.columns:
             fig_opt = go.Figure()
             fig_opt.add_trace(
@@ -354,6 +519,7 @@ if page == "Simulation":
                 )
             )
 
+            # Add Delta on secondary axis
             fig_opt.add_trace(
                 go.Scatter(
                     x=portfolio_data['Date'],
@@ -386,22 +552,45 @@ if page == "Simulation":
         st.write("Please run the simulation first.")
 
 
-elif page=="Volatility Visualization":
+if page == "Volatility Visualization":
     if 'data' in st.session_state:
-        data=st.session_state['data']
+        data = st.session_state['data']
         st.subheader("Volatility Visualization")
-        if 'implied_volatility' not in data.columns:
-            st.write("No implied_volatility in dataset.")
-        else:
-            st.write("Below we compare GARCH-based annualized volatility estimates to the implied volatility (or synthetic VIX).")
-            fig_vol=go.Figure()
-            fig_vol.add_trace(go.Scatter(x=data.index, y=data['smoothed_annualized_volatility'], mode='lines', name='GARCH Smoothed Ann. Vol', line=dict(color='red')))
-            if 'implied_volatility' in data.columns:
-                fig_vol.add_trace(go.Scatter(x=data.index, y=data['implied_volatility'], mode='lines', name='Implied Vol', line=dict(color='blue')))
-            fig_vol.update_layout(title="Volatility Comparison", xaxis_title='Date', yaxis_title='Volatility')
-            st.plotly_chart(fig_vol, use_container_width=True)
+        fig_vol = go.Figure()
+        
+        # Plot the selected volatility proxy
+        if volatility_proxy == "GARCH":
+            fig_vol.add_trace(go.Scatter(x=data.index, y=data['smoothed_annualized_volatility'], 
+                                         mode='lines', name='GARCH Smoothed Ann. Vol', line=dict(color='red')))
+        elif volatility_proxy == "VIX":
+            fig_vol.add_trace(go.Scatter(x=data.index, y=data['implied_volatility'], 
+                                         mode='lines', name='VIX', line=dict(color='blue')))
+        elif volatility_proxy == "VXN":
+            fig_vol.add_trace(go.Scatter(x=data.index, y=data['implied_volatility'], 
+                                         mode='lines', name='VXN', line=dict(color='orange')))
+        elif volatility_proxy == "Realized Volatility":
+            fig_vol.add_trace(go.Scatter(x=data.index, y=data['realized_volatility'], 
+                                         mode='lines', name='Realized Volatility', line=dict(color='green')))
+        elif volatility_proxy == "EWMA":
+            fig_vol.add_trace(go.Scatter(x=data.index, y=data['ewma_volatility'], 
+                                         mode='lines', name='EWMA Volatility', line=dict(color='purple')))
+        elif volatility_proxy == "ATR":
+            fig_vol.add_trace(go.Scatter(x=data.index, y=data['atr_volatility'], 
+                                         mode='lines', name='ATR Volatility', line=dict(color='brown')))
+        
+        # Optionally, plot other volatility measures for comparison
+        if volatility_proxy != "GARCH" and "smoothed_annualized_volatility" in data.columns:
+            fig_vol.add_trace(go.Scatter(x=data.index, y=data['smoothed_annualized_volatility'], 
+                                         mode='lines', name='GARCH Smoothed Ann. Vol', 
+                                         line=dict(color='red', dash='dash')))
+        
+        fig_vol.update_layout(title="Volatility Comparison", 
+                              xaxis_title='Date', 
+                              yaxis_title='Volatility')
+        st.plotly_chart(fig_vol, use_container_width=True)
     else:
         st.write("Please run the simulation first.")
+
 
 elif page=="Hedging Computations":
     st.subheader("Hedging Computations and Formulas")
