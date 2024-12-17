@@ -14,14 +14,13 @@ st.set_page_config(layout="wide")
 # Fetching Data Function
 ####################################
 
-@st.cache_data(show_spinner=True, ttl=86400)  # Cache expires after 1 day (86400 seconds)
+@st.cache_data(show_spinner=True, ttl=86400) 
 def get_data(symbol, risk_free, volatility_proxy, time_period):
     end_date = datetime.date.today()
     start_date = end_date - datetime.timedelta(days=int(time_period * 252))
     stock_data = yf.download(symbol, start=start_date, end=end_date)
 
-    # Remove the symbol prefix because we only retrieve one stock
-    if isinstance(stock_data.columns, pd.MultiIndex):  # Check for MultiIndex
+    if isinstance(stock_data.columns, pd.MultiIndex):  
         stock_data.columns = stock_data.columns.droplevel(1)
 
     if stock_data.empty:
@@ -31,7 +30,6 @@ def get_data(symbol, risk_free, volatility_proxy, time_period):
     stock_data['log_returns'] = np.log(stock_data['Close'] / stock_data['Close'].shift(1))
     stock_data.dropna(subset=['log_returns'], inplace=True)
 
-    # Fetch risk-free rate data
     risk_free_data = yf.download(risk_free, start=start_date, end=end_date)
     if risk_free_data.empty:
         st.error(f"No data found for risk-free symbol: {risk_free}")
@@ -39,11 +37,10 @@ def get_data(symbol, risk_free, volatility_proxy, time_period):
     risk_free_data = risk_free_data[['Close']] / 100
     risk_free_data.columns = ["Rate"]
 
-    # Initialize volatility proxy
     if volatility_proxy == "VIX":
         vol_proxy_symbol = "^VIX"
         volatility_data = yf.download(vol_proxy_symbol, start=start_date, end=end_date)
-        if isinstance(volatility_data.columns, pd.MultiIndex):  # Check for MultiIndex
+        if isinstance(volatility_data.columns, pd.MultiIndex): 
             volatility_data.columns = volatility_data.columns.droplevel(1)
         if volatility_data.empty:
             st.error(f"No data found for volatility proxy symbol: {vol_proxy_symbol}")
@@ -54,7 +51,7 @@ def get_data(symbol, risk_free, volatility_proxy, time_period):
     elif volatility_proxy == "VXN":
         vol_proxy_symbol = "^VXN"
         volatility_data = yf.download(vol_proxy_symbol, start=start_date, end=end_date)
-        if isinstance(volatility_data.columns, pd.MultiIndex):  # Check for MultiIndex
+        if isinstance(volatility_data.columns, pd.MultiIndex): 
             volatility_data.columns = volatility_data.columns.droplevel(1)
         if volatility_data.empty:
             st.error(f"No data found for volatility proxy symbol: {vol_proxy_symbol}")
@@ -80,7 +77,6 @@ def get_data(symbol, risk_free, volatility_proxy, time_period):
         volatility_data['atr_volatility'] = volatility_data['ATR'].rolling(window=14).mean() * np.sqrt(252) / stock_data['Close']
 
     elif volatility_proxy == "GARCH":
-        # Estimate volatility using GARCH
         garch_model = arch_model(stock_data['log_returns'] * 100, vol='Garch', p=1, q=1, mean='Zero', dist='normal')
         garch_fit = garch_model.fit(disp="off")
         stock_data['volatility'] = garch_fit.conditional_volatility
@@ -91,7 +87,6 @@ def get_data(symbol, risk_free, volatility_proxy, time_period):
     else:
         volatility_data = pd.DataFrame()
 
-    # Merge data
     if not volatility_data.empty:
         data = stock_data.join(risk_free_data, how='left').join(volatility_data, how='left')
     else:
