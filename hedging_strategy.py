@@ -269,101 +269,102 @@ def simulate_trades(data, initial_positions, fees=1/100, day_rebalancing=1, day_
             portfolio[data.index[i]] = new_position
 
         else:
-            if (i % day_rolling == 0):
-                # Roll option
-                call_price, call_delta = black_scholes(S, K, T, r, g, 'call')
-                shares_old = prev_position['Shares']
-                shares_new = N_call * call_delta
-                shares_change = - shares_new - shares_old
+            if (day_rolling != -1) | (day_rolling !=0):
+                if (i % day_rolling == 0):
+                    # Roll option
+                    call_price, call_delta = black_scholes(S, K, T, r, g, 'call')
+                    shares_old = prev_position['Shares']
+                    shares_new = N_call * call_delta
+                    shares_change = - shares_new - shares_old
 
-                bank = prev_position['Bank'] * np.exp(r * (day_rebalancing / 252))
-                bank += - call_price * fees
-                bank += call_price
+                    bank = prev_position['Bank'] * np.exp(r * (day_rebalancing / 252))
+                    bank += - call_price * fees
+                    bank += call_price
 
-                T = option_maturity
-                S = data['Close'].iloc[i]
-                K = int(round(K_multiplier * S, -1))
+                    T = option_maturity
+                    S = data['Close'].iloc[i]
+                    K = int(round(K_multiplier * S, -1))
 
-                transaction_fee = call_price * fees
-                bank -= transaction_fee
-                bank -= call_price
+                    transaction_fee = call_price * fees
+                    bank -= transaction_fee
+                    bank -= call_price
 
-                fees_cumsum = prev_position['fees_cumsum'] + transaction_fee
-                value_portfolio = bank + (-shares_new * S) + (N_call * call_price)
+                    fees_cumsum = prev_position['fees_cumsum'] + transaction_fee
+                    value_portfolio = bank + (-shares_new * S) + (N_call * call_price)
 
-                total_delta = call_delta - shares_new
-                cumulative_drift += abs(total_delta)
+                    total_delta = call_delta - shares_new
+                    cumulative_drift += abs(total_delta)
 
-                new_position = {
-                    "S": S,
-                    "K": K,
-                    "T": T,
-                    "Volatility": g,
-                    "Risk Free": r,
-                    "Shares": -shares_new,
-                    "Share_Price": S * shares_new,
-                    "Option_Type": 'call',
-                    "Option_Price": call_price,
-                    "Option_Delta": call_delta,
-                    "Bank": bank,
-                    "Value_portfolio": value_portfolio,
-                    "fees_transaction": transaction_fee,
-                    "fees_cumsum": fees_cumsum,
-                    "Cumulative_Delta_Drift": cumulative_drift,
-                    "day_rolling": day_rolling
-                }
-                portfolio[data.index[i]] = new_position
+                    new_position = {
+                        "S": S,
+                        "K": K,
+                        "T": T,
+                        "Volatility": g,
+                        "Risk Free": r,
+                        "Shares": -shares_new,
+                        "Share_Price": S * shares_new,
+                        "Option_Type": 'call',
+                        "Option_Price": call_price,
+                        "Option_Delta": call_delta,
+                        "Bank": bank,
+                        "Value_portfolio": value_portfolio,
+                        "fees_transaction": transaction_fee,
+                        "fees_cumsum": fees_cumsum,
+                        "Cumulative_Delta_Drift": cumulative_drift,
+                        "day_rolling": day_rolling
+                    }
+                    portfolio[data.index[i]] = new_position
 
-            else:
-                # Dynamic adjustment of rolling frequency based on vol regime
-                if day_rolling > 0:
-                    window_length = 21
-                    if i >= window_length:
-                        if use_vix_proxy:
-                            rolling_g = data['implied_volatility'].iloc[i - window_length:i].mean()
-                        else:
-                            rolling_g = data['smoothed_annualized_volatility'].iloc[i - window_length:i].mean()
+                else:
+                    # Dynamic adjustment of rolling frequency based on vol regime
+                    if day_rolling > 0:
+                        window_length = 21
+                        if i >= window_length:
+                            if use_vix_proxy:
+                                rolling_g = data['implied_volatility'].iloc[i - window_length:i].mean()
+                            else:
+                                rolling_g = data['smoothed_annualized_volatility'].iloc[i - window_length:i].mean()
 
-                        if g > 2 * rolling_g:
-                            day_rolling = max(1, int(day_rolling // 1.1))
-                        else:
-                            day_rolling = int(min(252, day_rolling * 1.04))
+                            if g > 2 * rolling_g:
+                                day_rolling = max(1, int(day_rolling // 1.1))
+                            else:
+                                day_rolling = int(min(252, day_rolling * 1.04))
 
-                bank = prev_position['Bank'] * np.exp(r * (day_rebalancing / 252))
-                call_price, call_delta = black_scholes(S, K, T, r, g, 'call')
+                    bank = prev_position['Bank'] * np.exp(r * (day_rebalancing / 252))
+                    call_price, call_delta = black_scholes(S, K, T, r, g, 'call')
 
-                shares_old = prev_position['Shares']
-                shares_new = N_call * call_delta
-                shares_change = - shares_new - shares_old
+                    shares_old = prev_position['Shares']
+                    shares_new = N_call * call_delta
+                    shares_change = - shares_new - shares_old
 
-                transaction_fee = abs(shares_change * S) * fees
-                bank -= transaction_fee
-                fees_cumsum = prev_position['fees_cumsum'] + transaction_fee
-                value_portfolio = bank + (-shares_new * S) + (N_call * call_price)
+                    transaction_fee = abs(shares_change * S) * fees
+                    bank -= transaction_fee
+                    fees_cumsum = prev_position['fees_cumsum'] + transaction_fee
+                    value_portfolio = bank + (-shares_new * S) + (N_call * call_price)
 
-                total_delta = call_delta - shares_new
-                cumulative_drift += abs(total_delta)
+                    total_delta = call_delta - shares_new
+                    cumulative_drift += abs(total_delta)
 
-                new_position = {
-                    "S": S,
-                    "K": K,
-                    "T": T,
-                    "Volatility": g,
-                    "Risk Free": r,
-                    "Shares": -shares_new,
-                    "Share_Price": S * shares_new,
-                    "Option_Type": 'call',
-                    "Option_Price": call_price,
-                    "Option_Delta": call_delta,
-                    "Bank": bank,
-                    "Value_portfolio": value_portfolio,
-                    "fees_transaction": transaction_fee,
-                    "fees_cumsum": fees_cumsum,
-                    "Cumulative_Delta_Drift": cumulative_drift,
-                    "day_rolling": day_rolling
-                }
+                    new_position = {
+                        "S": S,
+                        "K": K,
+                        "T": T,
+                        "Volatility": g,
+                        "Risk Free": r,
+                        "Shares": -shares_new,
+                        "Share_Price": S * shares_new,
+                        "Option_Type": 'call',
+                        "Option_Price": call_price,
+                        "Option_Delta": call_delta,
+                        "Bank": bank,
+                        "Value_portfolio": value_portfolio,
+                        "fees_transaction": transaction_fee,
+                        "fees_cumsum": fees_cumsum,
+                        "Cumulative_Delta_Drift": cumulative_drift,
+                        "day_rolling": day_rolling
+                    }
 
-                portfolio[data.index[i]] = new_position
+                    portfolio[data.index[i]] = new_position
 
     results = pd.DataFrame(portfolio).T
     results['Date'] = pd.to_datetime(results.index)
@@ -437,11 +438,11 @@ if page == "Simulation":
         
         numeric_cols = portfolio_data.select_dtypes(include=[float, int]).columns
         st.dataframe(portfolio_data.style.format({col: "{:.4f}" for col in numeric_cols}))
-        
+
         st.subheader('Final P&L')
         pnl = abs(portfolio_data['Value_portfolio'].diff().loc[portfolio_data['Value_portfolio'].diff() > 0].sum() / portfolio_data['Value_portfolio'].diff().loc[portfolio_data['Value_portfolio'].diff() < 0].sum()) * 100
         st.write(pnl)
-        
+
         fig_val = go.Figure()
         fig_val.add_trace(
             go.Scatter(
