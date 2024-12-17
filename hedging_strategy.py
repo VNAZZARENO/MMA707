@@ -440,10 +440,14 @@ if page == "Simulation":
         st.dataframe(portfolio_data.style.format({col: "{:.4f}" for col in numeric_cols}))
 
         st.subheader('Final P&L')
-        pnl = abs(portfolio_data['Value_portfolio'].diff().loc[portfolio_data['Value_portfolio'].diff() > 0].sum() / portfolio_data['Value_portfolio'].diff().loc[portfolio_data['Value_portfolio'].diff() < 0].sum()) * 100
-        st.write(pnl)
+        pnl = abs(
+            portfolio_data['Value_portfolio'].diff().loc[portfolio_data['Value_portfolio'].diff() > 0].sum() /
+            portfolio_data['Value_portfolio'].diff().loc[portfolio_data['Value_portfolio'].diff() < 0].sum()
+        ) * 100
+        st.metric(label="P&L Ratio", value=f"{pnl:.2f}%", delta=None)
 
         fig_val = go.Figure()
+
         fig_val.add_trace(
             go.Scatter(
                 x=portfolio_data['Date'],
@@ -454,75 +458,77 @@ if page == "Simulation":
             )
         )
 
-        if 'Volatility' in portfolio_data.columns:
-            fig_val.add_trace(
-                go.Scatter(
-                    x=portfolio_data['Date'],
-                    y=portfolio_data['Volatility'],
-                    mode='lines',
-                    name='Volatility',
-                    line=dict(color='blue', dash='dash'), 
-                    opacity=0.3,
-                    yaxis="y2"
-                )
+        fig_val.add_trace(
+            go.Scatter(
+                x=portfolio_data['Date'],
+                y=portfolio_data['Volatility'],
+                mode='lines',
+                name='Volatility',
+                line=dict(color='blue', dash='dash'),
+                opacity=0.5,
+                yaxis="y2"
             )
+        )
+
+        fig_val.add_trace(
+            go.Scatter(
+                x=portfolio_data['Date'],
+                y=portfolio_data['S'],
+                mode='lines',
+                name='Share Price (S)',
+                line=dict(color='orange')
+            )
+        )
+
+        fig_val.add_trace(
+            go.Scatter(
+                x=portfolio_data['Date'],
+                y=portfolio_data['K'],
+                mode='lines',
+                name='Strike Price (K)',
+                line=dict(color='red', dash='dot')
+            )
+        )
 
         fig_val.update_layout(
-            title="Portfolio Value and Volatility Over Time",
+            title="Portfolio Value, Share Price (S), Strike Price (K), and Volatility",
             xaxis_title='Date',
-            yaxis=dict(title='Portfolio Value', side='left'),
+            yaxis=dict(title='Value', side='left'),
             yaxis2=dict(
                 title='Volatility',
                 overlaying='y',
                 side='right'
             ),
-            legend=dict(x=0, y=1.1, orientation='h')
+            legend=dict(x=0, y=1.1, orientation='h'),
+            height=600
         )
 
         st.plotly_chart(fig_val, use_container_width=True)
 
-        if 'Option_Price' in portfolio_data.columns and 'Option_Delta' in portfolio_data.columns:
-            fig_opt = go.Figure()
-            fig_opt.add_trace(
-                go.Scatter(
-                    x=portfolio_data['Date'],
-                    y=portfolio_data['Option_Price'],
-                    mode='lines',
-                    name='Option Price',
-                    line=dict(color='purple')
-                )
-            )
+        portfolio_data['Cumulative_Max'] = portfolio_data['Value_portfolio'].cummax()
+        portfolio_data['Drawdown'] = portfolio_data['Value_portfolio'] / portfolio_data['Cumulative_Max'] - 1
 
-            fig_opt.add_trace(
-                go.Scatter(
-                    x=portfolio_data['Date'],
-                    y=portfolio_data['Option_Delta'],
-                    mode='lines',
-                    name='Option Delta',
-                    line=dict(color='blue'),
-                    yaxis='y2'
-                )
+        st.subheader("Drawdown Over Time")
+        fig_drawdown = go.Figure()
+        fig_drawdown.add_trace(
+            go.Scatter(
+                x=portfolio_data['Date'], y=portfolio_data['Drawdown'],
+                mode='lines', name='Drawdown',
+                line=dict(color='red'),
+                hovertemplate="Date: %{x}<br>Drawdown: %{y:.2%}"
             )
+        )
+        fig_drawdown.update_layout(
+            title="Drawdown Over Time",
+            xaxis_title="Date",
+            yaxis_title="Drawdown (%)"
+        )
+        st.plotly_chart(fig_drawdown, use_container_width=True)
 
-            fig_opt.update_layout(
-                title="Option Price and Delta (Delta Hedge)",
-                xaxis_title='Date',
-                yaxis=dict(title='Option Price', color='purple'),
-                yaxis2=dict(
-                    title='Delta',
-                    overlaying='y',
-                    side='right',
-                    color='blue'
-                ),
-                legend=dict(x=0, y=1.1, orientation='h')
-            )
-
-            st.plotly_chart(fig_opt, use_container_width=True)
-        else:
-            st.write("Option price or delta data not found in the portfolio_data. Please ensure these columns exist.")
 
     else:
         st.write("Please run the simulation first.")
+
 
 
 if page == "Volatility Visualization":
@@ -550,7 +556,6 @@ if page == "Volatility Visualization":
             fig_vol.add_trace(go.Scatter(x=data.index, y=data['atr_volatility'], 
                                          mode='lines', name='ATR Volatility', line=dict(color='brown')))
         
-        # Optionally, plot other volatility measures for comparison
         if volatility_proxy != "GARCH" and "smoothed_annualized_volatility" in data.columns:
             fig_vol.add_trace(go.Scatter(x=data.index, y=data['smoothed_annualized_volatility'], 
                                          mode='lines', name='GARCH Smoothed Ann. Vol', 
@@ -579,37 +584,152 @@ elif page=="Hedging Computations":
     st.latex(r"\Delta = N(d_1)")
     st.latex(r"\Gamma = \frac{N'(d_1)}{S_t \sigma \sqrt{T-t}}")
     st.markdown("**Delta Hedging:** To delta-hedge a call, you short Δ units of the underlying. This removes first-order price risk.")
-    st.markdown("**Gamma Hedging:** By also trading options (puts/calls), you can hedge gamma, removing second-order price risk (locally).")
+    st.markdown("**Gamma Hedging:** By also shorting a put option, you can hedge gamma, removing second-order price risk (locally).")
 
-elif page == "Positions Overview":
+import streamlit as st
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+if page == "Positions Overview":
     if 'portfolio_data' in st.session_state:
         portfolio_data = st.session_state['portfolio_data']
         st.subheader("Detailed Portfolio Positions Over Time")
-        st.markdown("### Positions Table")
+
         numeric_cols = portfolio_data.select_dtypes(include=[float, int]).columns
+        st.markdown("### Positions Table")
         st.dataframe(portfolio_data.style.format({col: "{:.4f}" for col in numeric_cols}))
 
+        st.markdown("### Visualization Options")
+        plot_type = st.radio("Select Plot Type", ["Combined View", "Individual Charts"])
 
-        fig_positions = make_subplots(rows=3, cols=1, shared_xaxes=True,
-                                     subplot_titles=("Shares Held Over Time", "Bank Balance Over Time", "Value Portfolio Over Time"))
-        fig_positions.add_trace(go.Scatter(x=portfolio_data['Date'], y=portfolio_data['Shares'],
-                                           mode='lines', name='Shares Held', line=dict(color='blue')),
-                                 row=1, col=1)
-        fig_positions.add_trace(go.Scatter(x=portfolio_data['Date'], y=portfolio_data['Bank'],
-                                           mode='lines', name='Bank Balance', line=dict(color='green')),
-                                 row=2, col=1)
-        fig_positions.add_trace(go.Scatter(x=portfolio_data['Date'], y=portfolio_data['Value_portfolio'],
-                                           mode='lines', name='Portfolio Value', line=dict(color='purple')),
-                                 row=3, col=1)
-        fig_positions.update_layout(height=900, width=1200, title_text="Positions Over Time",
-                                    showlegend=False)
-        fig_positions.update_xaxes(title_text="Date", row=3, col=1)
-        fig_positions.update_yaxes(title_text="Shares", row=1, col=1)
-        fig_positions.update_yaxes(title_text="Bank ($)", row=2, col=1)
-        fig_positions.update_yaxes(title_text="Portfolio Value ($)", row=3, col=1)
-        st.plotly_chart(fig_positions, use_container_width=True)
+        if plot_type == "Combined View":
+            fig_positions = make_subplots(
+                rows=3, cols=1, shared_xaxes=True,
+                subplot_titles=(
+                    "Shares Held Over Time",
+                    "Bank Balance Over Time",
+                    "Portfolio Value Over Time"
+                )
+            )
+
+            fig_positions.add_trace(
+                go.Scatter(
+                    x=portfolio_data['Date'], y=portfolio_data['Shares'],
+                    mode='lines', name='Shares Held',
+                    line=dict(color='blue'),
+                    hovertemplate="Date: %{x}<br>Shares: %{y:.2f}"
+                ), row=1, col=1
+            )
+
+            fig_positions.add_trace(
+                go.Scatter(
+                    x=portfolio_data['Date'], y=portfolio_data['Bank'],
+                    mode='lines', name='Bank Balance',
+                    line=dict(color='green'),
+                    hovertemplate="Date: %{x}<br>Bank Balance: %{y:,.2f} $"
+                ), row=2, col=1
+            )
+
+            fig_positions.add_trace(
+                go.Scatter(
+                    x=portfolio_data['Date'], y=portfolio_data['Value_portfolio'],
+                    mode='lines', name='Portfolio Value',
+                    line=dict(color='purple'),
+                    hovertemplate="Date: %{x}<br>Portfolio Value: %{y:,.2f} $"
+                ), row=3, col=1
+            )
+
+            fig_positions.update_layout(
+                height=900, width=1200,
+                title_text="Positions Over Time",
+                showlegend=True,
+                hovermode='x unified',
+            )
+            fig_positions.update_xaxes(title_text="Date", row=3, col=1)
+            fig_positions.update_yaxes(title_text="Shares", row=1, col=1)
+            fig_positions.update_yaxes(title_text="Bank Balance ($)", row=2, col=1)
+            fig_positions.update_yaxes(title_text="Portfolio Value ($)", row=3, col=1)
+
+            st.plotly_chart(fig_positions, use_container_width=True)
+
+        else:
+            st.subheader("Shares Held Over Time")
+            fig_shares = go.Figure()
+            fig_shares.add_trace(
+                go.Scatter(
+                    x=portfolio_data['Date'], y=portfolio_data['Shares'],
+                    mode='lines', name='Shares Held',
+                    line=dict(color='blue'),
+                    hovertemplate="Date: %{x}<br>Shares: %{y:.2f}"
+                )
+            )
+            fig_shares.update_layout(title="Shares Held Over Time", xaxis_title="Date", yaxis_title="Shares")
+            st.plotly_chart(fig_shares, use_container_width=True)
+
+            st.subheader("Bank Balance Over Time")
+            fig_bank = go.Figure()
+            fig_bank.add_trace(
+                go.Scatter(
+                    x=portfolio_data['Date'], y=portfolio_data['Bank'],
+                    mode='lines', name='Bank Balance',
+                    line=dict(color='green'),
+                    hovertemplate="Date: %{x}<br>Bank Balance: %{y:,.2f} $"
+                )
+            )
+            fig_bank.update_layout(title="Bank Balance Over Time", xaxis_title="Date", yaxis_title="Bank Balance ($)")
+            st.plotly_chart(fig_bank, use_container_width=True)
+
+            st.subheader("Portfolio Value Over Time")
+            fig_value = go.Figure()
+            fig_value.add_trace(
+                go.Scatter(
+                    x=portfolio_data['Date'], y=portfolio_data['Value_portfolio'],
+                    mode='lines', name='Portfolio Value',
+                    line=dict(color='purple'),
+                    hovertemplate="Date: %{x}<br>Portfolio Value: %{y:,.2f} $"
+                )
+            )
+            fig_value.update_layout(title="Portfolio Value Over Time", xaxis_title="Date", yaxis_title="Portfolio Value ($)")
+            st.plotly_chart(fig_value, use_container_width=True)
+
+        st.subheader("Performance Summary")
+        portfolio_data['Daily_Return'] = portfolio_data['Value_portfolio'].pct_change()
+        portfolio_data['Rolling_Sharpe'] = portfolio_data['Daily_Return'].rolling(30).mean() / portfolio_data['Daily_Return'].rolling(30).std()
+
+        st.subheader("Rolling 30-Day Sharpe Ratio")
+        fig_sharpe = go.Figure()
+        fig_sharpe.add_trace(
+            go.Scatter(
+                x=portfolio_data['Date'], y=portfolio_data['Rolling_Sharpe'],
+                mode='lines', name='Rolling Sharpe',
+                line=dict(color='brown'),
+                hovertemplate="Date: %{x}<br>Sharpe Ratio: %{y:.4f}"
+            )
+        )
+        fig_sharpe.update_layout(
+            title="Rolling 30-Day Sharpe Ratio",
+            xaxis_title="Date",
+            yaxis_title="Sharpe Ratio"
+        )
+        st.plotly_chart(fig_sharpe, use_container_width=True)
+
+
+        total_gains = portfolio_data['Value_portfolio'].diff().loc[portfolio_data['Value_portfolio'].diff() > 0].sum()
+        total_losses = portfolio_data['Value_portfolio'].diff().loc[portfolio_data['Value_portfolio'].diff() < 0].sum()
+        net_pnl = total_gains + total_losses
+        avg_daily_return = portfolio_data['Daily_Return'].mean()
+
+        summary = {
+            "Total Gains ($)": f"{total_gains:,.2f}",
+            "Total Losses ($)": f"{total_losses:,.2f}",
+            "Net P&L ($)": f"{net_pnl:,.2f}",
+            "Average Daily Return (%)": f"{avg_daily_return * 100:.4f}%"
+        }
+        st.table(summary)
+
     else:
-        st.write("Please run the simulation first.")
+        st.warning("Please run the simulation first.")
+
 
 st.markdown("<br><br>", unsafe_allow_html=True)
 st.markdown("#### For questions : vincent.nazzareno@gmail.com", unsafe_allow_html=True)
