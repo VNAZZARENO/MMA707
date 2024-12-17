@@ -24,7 +24,7 @@
 
 ## Introduction
 
-Delta hedging is a key strategy in options trading to reduce the risk from price changes in the underlying asset. This repository, **MMA707**, implements a delta-hedging approach using the Black-Scholes model, enhanced with volatility estimates from GARCH models and VIX proxies. The goal is to simulate how the hedging strategy performs with different rebalancing and rolling frequencies, while considering transaction costs and other real-world factors.
+Delta hedging is a strategy in options trading where we seek to reduce the risk from small price changes in the underlying asset. This repository, implements a call option delta-hedging approach using the Black-Scholes model, enhanced with volatility estimates from GARCH models and VIX implied volatility proxies. The goal is to simulate how the hedging strategy performs with parameters set, while considering transaction costs.
 
 ---
 
@@ -61,7 +61,7 @@ $$
 \Delta = \frac{\partial C}{\partial S} = \Phi(d_1)
 $$
 
-In delta hedging, we aim to create a delta-neutral portfolio, meaning its value doesn't change with small price movements of the underlying asset. For a long call option, delta is positive, so we hedge by shorting $\Delta$ units of the underlying asset.
+In delta hedging, we aim to create a delta-neutral portfolio, meaning its value doesn't change with small price movements of the underlying asset. For a long call option, delta is positive, so we hedge by shorting $\Delta$ units of the underlying asset to have a portfolio with zero delta at inception.
 
 ### Gamma, Theta, and Other Greeks
 
@@ -69,7 +69,7 @@ Other Greeks are also important in options trading and hedging:
 
 - **Gamma $\Gamma$**: Shows how delta changes with the underlying asset's price. A long option position has positive gamma, meaning delta increases as the asset price rises. High gamma requires more frequent rebalancing to stay delta-neutral.
   
-- **Theta $\Theta$**: Represents time decay, or how the option's price decreases as time passes. For long options, theta is negative, indicating the option loses value over time.
+- **Theta $\Theta$**: Represents time decay, or how the option's price decreases as time passes. When we are long options, theta is negative, indicating the option loses value over time.
 
 - **Vega $\nu$**: Measures sensitivity to volatility changes.
 
@@ -141,11 +141,13 @@ Make sure you have these Python libraries installed:
 - yfinance
 - arch
 - tqdm
+- plotly
+- streamlit
 
 Install them with pip:
 
 ```bash
-pip install numpy pandas scipy matplotlib seaborn yfinance arch tqdm
+pip install numpy pandas scipy matplotlib seaborn yfinance arch tqdm plotly streamlit
 ```
 
 ### Running the Simulation
@@ -165,9 +167,9 @@ pip install numpy pandas scipy matplotlib seaborn yfinance arch tqdm
 
    Tinker with the notebook to customize the simulation.
 
-4. **View Results:**
+5. **View Results:**
 
-   The simulation will create CSV files with portfolio data and generate heatmaps showing final portfolio values for different parameter combinations.
+   The simulation will create CSV files with portfolio data and generate heatmaps showing final portfolio values for different parameter combinations, as well as 3D plots.
 
 ### Interpreting the Results
 
@@ -181,7 +183,7 @@ pip install numpy pandas scipy matplotlib seaborn yfinance arch tqdm
 
 ## Conclusion
 
-The delta hedging strategy in this repository highlights the real-world challenges of replicating option payoffs. While the Black-Scholes model suggests that continuous hedging can perfectly match option payoffs, practical issues like transaction costs, discrete rebalancing, and volatility estimation errors lead to a gradual loss in portfolio value. Our parameter sweep analysis shows the balance between hedging frequency and transaction costs, emphasizing the need to optimize rebalancing schedules to reduce losses.
+The delta hedging strategy shows real market challenges of delta hedging and why only hedging delta may not be enough. While the Black-Scholes model suggests that continuous hedging can perfectly match option payoffs, practical issues like transaction costs, discrete rebalancing, and volatility estimation errors lead to a gradual loss in portfolio value.
 
 ---
 
