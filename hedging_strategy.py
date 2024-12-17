@@ -246,7 +246,7 @@ def simulate_trades(data, initial_positions, fees=1/100, day_rebalancing=1, day_
 
             total_delta = call_delta - shares_new
             cumulative_drift += abs(total_delta)
-
+            T = option_maturity # Reset T
             new_position = {
                 "S": S,
                 "K": K,
@@ -383,7 +383,7 @@ stock_ticker = st.sidebar.text_input("Stock Ticker (For Real Data)", value="SPY"
 year_history = st.sidebar.slider("History (years)", 0.5, 30.0, 15.0, 0.5)
 
 day_rebalancing = st.sidebar.number_input("Rebalancing Frequency (days)",1,252,1)
-day_rolling = st.sidebar.number_input("Rolling Frequency (days)",-1,1000,-1)
+day_rolling = st.sidebar.number_input("Rolling Frequency (days)",1,9999999, 9999999)
 fees = st.sidebar.slider("Transaction Fees (in %)", 0.0, 5.0, 1.0)/100.0
 option_maturity = st.sidebar.slider("Option Maturity (years)", 0.1, 2.0, 0.5, 0.1)
 volatility_proxy = st.sidebar.selectbox("Volatility Source", ["GARCH", "VIX", "VXN", "Realized Volatility", "EWMA", "ATR"])
