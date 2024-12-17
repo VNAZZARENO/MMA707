@@ -437,7 +437,11 @@ if page == "Simulation":
         
         numeric_cols = portfolio_data.select_dtypes(include=[float, int]).columns
         st.dataframe(portfolio_data.style.format({col: "{:.4f}" for col in numeric_cols}))
-
+        
+        st.subheader('Final P&L')
+        pnl = abs(portfolio_data['Value_portfolio'].diff().loc[portfolio_data['Value_portfolio'].diff() > 0].sum() / portfolio_data['Value_portfolio'].diff().loc[portfolio_data['Value_portfolio'].diff() < 0].sum()) * 100
+        st.write(pnl)
+        
         fig_val = go.Figure()
         fig_val.add_trace(
             go.Scatter(
